@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新人入门指南-网络接口篇</title>
+<link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
+<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
+</head>
+<body><div class="container"><h1 id="新人入门指南-网络接口篇">新人入门指南-网络接口篇</h1>
+
+<hr>
+
+
+
+<h2 id="前言">前言</h2>
+
+<p>本文主要针对MOA项目中设计和编码网络接口时的一些，刍荛之见，如读者思考或描述偶有欠妥，万望修改或备注意见，为后来者提供更好的入手姿势。</p>
+
+<h2 id="目录的介绍">目录的介绍</h2>
+
+<p>现在的项目按不同的功能进行了分包，每个功能包下面都有几乎相似的目录结构，如下图所示：</p>
+
+<p><img src="res\新人排坑指南-接口篇\1.png" alt="" title=""></p>
+
+<p>其中，与接口相关的有如下几个包： <br>
+- service ： 存放网络接口类的包，主要功能是为UI层提供网络和本地接口。 <br>
+- callback ： 存放callback的包，主要功能是抽取出来的一个Callback方法，用来处理复杂的网络返回结果。 <br>
+- dao ： 存放与数据库操作相关的方法和接口，主要功能是为网络层提供数据库操作的接口。 <br>
+- pojo ： 存放网络接口使用的实体类，该包下的类，一般情况下是用来对PB文件进行转换或者对PB的泛型重新定义的类。 <br>
+- vo ： 存放UI层直接使用的实体类，该包下的类是对pojo下的类进行再次处理后能够直接被UI层使用的类 <br>
+- net : 存放的旧版本时代的历史接口方法，如果有时间和勇气，请修改西面的方法，转移到service下面</p>
+
+<p>对于这些包的分工及使用有如下几点建议： <br>
+1. dao和service下面仅存放接口类和相关的抽象方法，不要再存放其它的类 <br>
+2. 不是所有的Callback都需要被抽离出来作为一个单独的类，只有在网络接口返回的数据过于复杂，需要进行特殊处理时才抽离 <br>
+3. pojo和vo下都存储的是UI层可以直接使用的数据，不需要为了保证UI层使用的是vo类，刻意写一个一模一样的类 <br>
+4. PB转pojo和pojo转vo的方法最好作为静态方法写在目标类中，不要抽离出去，不方便维护（老代码很多都是抽离出去的）</p>
+
+
+
+<h2 id="准备工作">准备工作</h2>
+
+<p>首先，我们需要知道服务器的两个项目的svn地址：</p>
+
+<ul>
+<li><p>请求码：svn://200.200.107.201/moa/moa/moa1.1/Trunk/background/env/source/libs/moabase/include</p></li>
+<li><p>PB类：svn://200.200.107.201/moa/moa/moa1.1/Trunk/proto/proto_def</p></li>
+</ul>
+
+
+
+<h3 id="请求码"><span id="span_code">请求码</span></h3>
+
+<p>请求码的项目下面都是“.h”文件，这个项目下面是服务器使用到的一些“头文件”，我们需要关注其中的两个文件： <br>
+- moa_typedef.h ： 这个下面存放了我们客户端所有网络请求的服务码和操作码，分别对应MOA项目下面的<strong>NetServices.java</strong>和<strong>NetOperations.java</strong> <br>
+- moa_errno.h ： 这个下面存放了我们客户端所有网络返回的错误码，对应MOA项目下面的<strong>NetError.java</strong></p>
+
+<blockquote>
+  <p><strong>排坑指南：</strong> <br>
+  1.这两个文件你得经常自己去更新，然后修改对应的类，服务器不会告诉你这个类有更新，不要祈求服务端在文件有更新时通知你！</p>
+  
+  <p>2.有些服务码是App用不到的，你可以不加进去，但是如果有请求的REQ码，RSP的码也必须得放进去，即时没用到！</p>
+</blockquote>
+
+
+
+<h3 id="pb类"><span id="span_pb">PB类</span></h3>
+
+<p>PB类的项目下面的“.proto”文件，就是借口的REQ和RSP的详细信息，我们对于这类文件的操作一般有两种方法，在不同的场景，我们对于这类文件的操作一般不同，你可以选择你喜欢的方式。</p>
+
+<ul>
+<li>第一种方法，一般用在不熟悉proto文件时，我们会使用<a href="file:\200.200.107.38\software\Android\wire1.2" target="_blank">工具</a>帮我们将proto文件转换成java文件，然后使用生成的新的PB类覆盖jni下面相同命名的PB类，达到更新的目的</li>
+<li>第二种方法，在熟悉了proto文件后，我们可以根据SVN的提交记录找到有变化的proto文件以及其中的PB类，然后在jni下面对应的PB类中进行对应的修改</li>
+</ul>
+
+<blockquote>
+  <p><strong>排坑指南：</strong> <br>
+  1.使用第一种方法时要注意如下几点： <br>
+   - 工具生成的代码注释会出现换行的情况，暂时没办法解决~ <br>
+   - 需要自己修改proto文件中的packet内容，否则生成的Java文件不能直接在jni的库中使用，正确命名是jni库中的包名 <br>
+   - proto中如果import的其它的文件，需要把对应文件的packet也修改成正确包名</p>
+  
+  <p>2.使用第二种方法时要注意的只有一个地方：千万别看漏了！千万别看漏了！千万别看漏了！（重要的事说三遍！）</p>
+  
+  <p>3.推荐新人靠第一种方法熟悉接口文件，然后培养自己使用第二种方法，可以减少很多时间</p>
+</blockquote>
+
+<h2 id="开发接口">开发接口</h2>
+
+<p>在开发过程中，你将看到项目中有很多种接口的编码模式，最常见的就是使用 NetTask 或者各种 Template。NetTask 是当前最新的接口实现方式，它的优点有很多：</p>
+
+<ul>
+<li>减少了接口代码的数量</li>
+<li>提高了接口代码的可读性</li>
+<li>内部封装了同步和异步的实现，调用简单</li>
+<li>内部打印错误及正确的网络返回信息</li>
+</ul>
+
+
+
+<h3 id="nettask-的使用">NetTask 的使用</h3>
+
+<p>下面是使用伪码描述的一个 NetTask 的使用方法：</p>
+
+<pre class="prettyprint"><code class=" hljs java">    <span class="hljs-keyword">new</span> NetTask&lt;PB请求类,PB返回类&gt;(接口方法名)
+    .buildPbReq(<span class="hljs-keyword">new</span> NetTask.PbBuild&lt;PB_Req&gt;() {
+        <span class="hljs-annotation">@Override</span>
+        <span class="hljs-keyword">public</span> PB请求类 <span class="hljs-title">buildPbReq</span>() {
+            <span class="hljs-comment">//初始化 PB请求类</span>
+            <span class="hljs-keyword">return</span> req;
+        }
+    })
+    .request(服务码, 操作码, PB返回类)
+    .handleError(<span class="hljs-keyword">new</span> NetTask.ErrorHandle&lt;PB返回类&gt;() {
+        <span class="hljs-annotation">@Override</span>
+        <span class="hljs-keyword">public</span> <span class="hljs-keyword">void</span> <span class="hljs-title">handle</span>(Integer errorCode, PB返回类 PB返回类, Callback callback) {
+            <span class="hljs-comment">//处理错误返回结果</span>
+        }
+    })
+    .handleSuccess(<span class="hljs-keyword">new</span> NetTask.SuccessHandle&lt;PB_Rsp&gt;() {
+        <span class="hljs-annotation">@Override</span>
+        <span class="hljs-keyword">public</span> Object <span class="hljs-title">handle</span>(PB返回类 pbRsp, Object lastHandleReturn, Callback cb) {
+            <span class="hljs-comment">//处理正确返回结果</span>
+            <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+        }
+    })
+    .run(callback，是否同步);
+</code></pre>
+
+<p>针对上面的伪码中使用到的一些参数，需要注意：</p>
+
+<blockquote>
+  <p><strong>排坑指南：</strong> <br>
+  1.PB请求类和PB返回类是通过proto文件和对应的工具生成前文已经提到过（<a href="#span_pb" target="_blank">点击查看</a>） <br>
+  2.服务码和操作码的获取及它在项目中对应的类之前也提到过（<a href="#span_code" target="_blank">点击查看</a>） <br>
+  3.接口方法名不是网络请求的名字，而是在你的Service类中使用这个 NetTask 的方法名 <br>
+  4.当你调用了 handleError 或 handleSuccess 的方法后，必须在Handle 方法中执行 callback 的回调 <br>
+  5.当你传入的 callback=null 时，必须调用 handleError 和 handleSuccess 来处理异常和正常情况 <br>
+  6.run 方法存在多个实现，分别对应同步、异步的请求方式，可以看看具体的代码和注释</p>
+</blockquote>
+
+
+
+<h3 id="nettask-的流程">NetTask 的流程</h3>
+
+<p>下面是 NetTask 的执行流程：</p>
+
+<div class="flow-chart"><svg height="1052.25" version="1.1" width="833.75" xmlns="http://www.w3.org/2000/svg" style="overflow: hidden; position: relative; top: -0.921875px;"><desc style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">Created with Raphaël 2.1.0</desc><defs style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"><path stroke-linecap="round" d="M5,0 0,2.5 5,5z" id="raphael-marker-block" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"></path><marker id="raphael-marker-endblock33" markerHeight="3" markerWidth="3" orient="auto" refX="1.5" refY="1.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"><use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#raphael-marker-block" transform="rotate(180 1.5 1.5) scale(0.6,0.6)" stroke-width="1.6667" fill="black" stroke="none" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"></use></marker></defs><rect x="0" y="0" width="82" height="39" r="20" rx="20" ry="20" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="st" transform="matrix(1,0,0,1,79,40.75)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="stt" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,79,40.75)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">构造请求</tspan></text><rect x="0" y="0" width="232" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op1" transform="matrix(1,0,0,1,4,170.5)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op1t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,4,170.5)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">传入服务码、操作码、返回类型</tspan></text><rect x="0" y="0" width="82" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op2" transform="matrix(1,0,0,1,79,300.25)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op2t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,79,300.25)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">发送请求</tspan></text><path fill="#ffffff" stroke="#000000" d="M45,22.5L0,45L90,90L180,45L90,0L0,45" stroke-width="2" font-family="sans-serif" font-weight="normal" id="cond1" class="flowchart" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;" transform="matrix(1,0,0,1,30,404.5)"></path><text x="50" y="45" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="cond1t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,30,404.5)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">判断是否异步</tspan></text><rect x="0" y="0" width="112" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op3" transform="matrix(1,0,0,1,64,585.25)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op3t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,64,585.25)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">执行同步请求</tspan></text><path fill="#ffffff" stroke="#000000" d="M56.25,28.125L0,56.25L112.5,112.5L225,56.25L112.5,0L0,56.25" stroke-width="2" font-family="sans-serif" font-weight="normal" id="cond2" class="flowchart" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;" transform="matrix(1,0,0,1,7.5,678.25)"></path><text x="61.25" y="56.25" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="cond2t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,7.5,678.25)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">判断是否请求成功</tspan></text><rect x="0" y="0" width="172" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op7" transform="matrix(1,0,0,1,34,881.5)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op7t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,34,881.5)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">执行对正确结果的操作</tspan></text><rect x="0" y="0" width="140.609375" height="39" r="20" rx="20" ry="20" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="e" transform="matrix(1,0,0,1,49.6953,1011.25)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="et" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,49.6953,1011.25)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">将结果回调给UI层</tspan><tspan dy="18" x="10" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);"></tspan></text><rect x="0" y="0" width="172" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op6" transform="matrix(1,0,0,1,316.5,715)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op6t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,316.5,715)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">执行对错误结果的操作</tspan></text><rect x="0" y="0" width="112" height="39" r="0" rx="0" ry="0" fill="#ffffff" stroke="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);" stroke-width="2" class="flowchart" id="op4" transform="matrix(1,0,0,1,538.5,430)"></rect><text x="10" y="19.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" id="op4t" class="flowchartt" font-size="14px" font-family="sans-serif" font-weight="normal" transform="matrix(1,0,0,1,538.5,430)"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">执行异步请求</tspan></text><path fill="none" stroke="#000000" d="M120,79.75C120,79.75,120,151.81302136182785,120,167.50643324042903" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M120,209.5C120,209.5,120,281.56302136182785,120,297.25643324042903" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M120,339.25C120,339.25,120,388.7064908146858,120,401.5052897071582" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M120,494.5C120,494.5,120,566.5630213618279,120,582.256433240429" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><text x="125" y="504.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" font-size="14px" font-family="sans-serif" font-weight="normal"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">yes</tspan></text><path fill="none" stroke="#000000" d="M210,449.5C210,449.5,502.64369881153107,449.5,535.5089579554042,449.5" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><text x="215" y="439.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" font-size="14px" font-family="sans-serif" font-weight="normal"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">no</tspan></text><path fill="none" stroke="#000000" d="M120,624.25C120,624.25,120,663.9040999412537,120,675.2504390846007" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M120,790.75C120,790.75,120,862.8130213618279,120,878.506433240429" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><text x="125" y="800.75" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" font-size="14px" font-family="sans-serif" font-weight="normal"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">yes</tspan></text><path fill="none" stroke="#000000" d="M232.5,734.5C232.5,734.5,298.51032757759094,734.5,313.4980240246514,734.5" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><text x="237.5" y="724.5" text-anchor="start" font="10px &quot;Arial&quot;" stroke="none" fill="#000000" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); text-anchor: start; font-style: normal; font-variant: normal; font-weight: normal; font-stretch: normal; font-size: 14px; line-height: normal; font-family: sans-serif;" font-size="14px" font-family="sans-serif" font-weight="normal"><tspan dy="5.5" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0);">no</tspan></text><path fill="none" stroke="#000000" d="M120,920.5C120,920.5,120,992.5630213618279,120,1008.256433240429" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M402.5,754C402.5,754,402.5,986.25,402.5,986.25C402.5,986.25,120,986.25,120,986.25C120,986.25,120,1001.6234445571899,120,1008.2592477742583" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path><path fill="none" stroke="#000000" d="M594.5,469C594.5,469,594.5,653.25,594.5,653.25C594.5,653.25,120,653.25,120,653.25C120,653.25,120,668.6234445571899,120,675.2592477742583" stroke-width="2" marker-end="url(#raphael-marker-endblock33)" font-family="sans-serif" font-weight="normal" style="-webkit-tap-highlight-color: rgba(0, 0, 0, 0); font-family: sans-serif; font-weight: normal;"></path></svg></div>
+
+<p>结合伪码和流程图可以看出，使用 NetTask 包装好的方法来构建网络接口，其流程结构非常的简单，上层在创建一个网络请求的时候，根本就不用去关心请求是如何发出去的，也不用去关心打印日志等一些问题。</p>
+
+
+
+<h3 id="nettask-实例">NetTask 实例</h3>
+
+<pre class="prettyprint"><code class=" hljs java">\\例子一：异步请求
+    <span class="hljs-keyword">public</span> <span class="hljs-keyword">static</span> <span class="hljs-keyword">void</span> <span class="hljs-title">saveRemindShareMsg</span>(<span class="hljs-keyword">final</span> ShareMsg msgVo, <span class="hljs-keyword">final</span> Callback callback) {
+        <span class="hljs-keyword">new</span> NetTask&lt;PB_SdRemindSaveMsgReq, PB_SdRemindSaveMsgRsp&gt;(<span class="hljs-string">"saveRemindShareMsg"</span>)
+                .buildPbReq(<span class="hljs-keyword">new</span> NetTask.PbBuild&lt;PB_SdRemindSaveMsgReq&gt;() {
+                    <span class="hljs-annotation">@Override</span>
+                    <span class="hljs-keyword">public</span> PB_SdRemindSaveMsgReq <span class="hljs-title">buildPbReq</span>() {
+                        PB_SdRemindSaveMsgReq req = <span class="hljs-keyword">new</span> PB_SdRemindSaveMsgReq();
+                        req.msg_info = ShareMsg.poToPb(msgVo);
+                        <span class="hljs-keyword">return</span> req;
+                    }
+                })
+                .request(NetServices.SERVER_SCHEDULE, NetOperations.SRVOP_SCHEDULE_REMIND_SAVE_MSG_REQ, PB_SdRemindSaveMsgRsp.class)
+                .handleSuccess(<span class="hljs-keyword">new</span> NetTask.SuccessHandle&lt;PB_SdRemindSaveMsgRsp&gt;() {
+                    <span class="hljs-annotation">@Override</span>
+                    <span class="hljs-keyword">public</span> Object <span class="hljs-title">handle</span>(PB_SdRemindSaveMsgRsp pbRsp, Object lastHandleReturn, Callback cb) {
+                        CallbackUtils.callbackInfoVoid(callback);
+                        <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+                    }
+                })
+                .runOnThread(callback);
+    }
+
+\\例子二：同步请求
+    <span class="hljs-keyword">public</span> <span class="hljs-keyword">static</span> StandardEntityResult&lt;ScheduleVo&gt; <span class="hljs-title">getScheduleDetailNet</span>(<span class="hljs-keyword">long</span> sid) {
+
+        <span class="hljs-keyword">final</span> List&lt;Long&gt; sids = <span class="hljs-keyword">new</span> ArrayList&lt;&gt;();
+        sids.add(sid);
+
+        <span class="hljs-keyword">final</span> StandardEntityResult&lt;ScheduleVo&gt; backInfo = <span class="hljs-keyword">new</span> StandardEntityResult&lt;&gt;();
+
+        <span class="hljs-keyword">final</span> ScheduleGetSpecifiedCallback getCallback = <span class="hljs-keyword">new</span> ScheduleGetSpecifiedCallback(<span class="hljs-keyword">new</span> Callback() {
+            <span class="hljs-annotation">@Override</span>
+            <span class="hljs-keyword">public</span> &lt;T&gt; <span class="hljs-keyword">void</span> <span class="hljs-title">callback</span>(CallbackInfo&lt;T&gt; info) {
+                <span class="hljs-keyword">if</span> (info.bError) {
+                    backInfo.bError = <span class="hljs-keyword">true</span>;
+                    backInfo.errorCode = info.errorCode;
+                } <span class="hljs-keyword">else</span> {
+                    backInfo.bError = <span class="hljs-keyword">false</span>;
+                    List&lt;ScheduleVo&gt; infos = (List&lt;ScheduleVo&gt;) info.mTs;
+                    backInfo.entity = infos != <span class="hljs-keyword">null</span> &amp;&amp; infos.size() &gt; <span class="hljs-number">0</span> ? infos.get(<span class="hljs-number">0</span>) : <span class="hljs-keyword">null</span>;
+                }
+            }
+        }, sids);
+        <span class="hljs-keyword">new</span> NetTask&lt;PB_SdGetReq, PB_SdGetRsp&gt;(<span class="hljs-string">"getScheduleDetailNet"</span>)
+                .buildPbReq(<span class="hljs-keyword">new</span> NetTask.PbBuild&lt;PB_SdGetReq&gt;() {
+                    <span class="hljs-annotation">@Override</span>
+                    <span class="hljs-keyword">public</span> PB_SdGetReq <span class="hljs-title">buildPbReq</span>() {
+                        PB_SdGetReq req = <span class="hljs-keyword">new</span> PB_SdGetReq();
+                        List&lt;Schedule&gt; schedules = <span class="hljs-keyword">null</span>;
+                        <span class="hljs-keyword">try</span> {
+                            schedules = ScheduleDaoImpl.dao.queryVersion(sids);
+                        } <span class="hljs-keyword">catch</span> (SQLException e) {
+                            e.printStackTrace();
+                            LogCore.i(TAG, e);
+                        }
+                        req.sd_vers = ScheduleEntityTransform.idVersionsToPbIdVers(ScheduleEntityTransform.schedulesToIdViersions(schedules, sids));
+                        <span class="hljs-keyword">return</span> req;
+                    }
+                })
+                .request(NetServices.SERVER_SCHEDULE, NetOperations.SRVOP_SCHEDULE_GET_REQ, PB_SdGetRsp.class)
+                .handleSuccess(<span class="hljs-keyword">new</span> NetTask.SuccessHandle&lt;PB_SdGetRsp&gt;() {
+                    <span class="hljs-annotation">@Override</span>
+                    <span class="hljs-keyword">public</span> Object <span class="hljs-title">handle</span>(PB_SdGetRsp pbRsp, Object lastHandleReturn, Callback callback) {
+                        CallbackUtils.callbackInfoObject(getCallback, pbRsp);
+                        <span class="hljs-keyword">return</span> <span class="hljs-keyword">null</span>;
+                    }
+                })
+                .run(getCallback);
+        <span class="hljs-keyword">return</span> backInfo;
+    }
+</code></pre></div></body>
+</html>
